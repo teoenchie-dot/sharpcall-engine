@@ -1,0 +1,7 @@
+# SharpCall engine — Git-linked so the Blobs-backed ledgers can be edited
+# in place WITHOUT creating a new site (a new site = a new, empty blob store).
+[build]
+  functions = "netlify/functions"
+  publish   = "."
+[functions]
+  node_bundler = "esbuild"

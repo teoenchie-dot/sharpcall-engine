@@ -1,0 +1,6 @@
+{
+  "name": "sharpcall-engine",
+  "private": true,
+  "description": "SharpCall market engine: signal, calls ledger, trades ledger",
+  "dependencies": { "@netlify/blobs": "^10.7.9" }
+}
