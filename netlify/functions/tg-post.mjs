@@ -60,6 +60,7 @@ export function buildPosts(d){
     freeLead =
 `TODAY'S CALL: ${nm} is going ${word}
 How sure are we? ${lead.conf}% confident.
+
 ${moveLine}`;
 
     proLead =
@@ -71,48 +72,53 @@ Take profit at:     ${lead.target}${lead.targetPct != null ? `  (${lead.targetPc
 Cut losses at:      ${lead.stop}${lead.stopPct != null ? `  (${lead.stopPct}%)` : ""}
 Price right now:    ${lead.live}
 How long we hold:   ${lead.horizon || "short term"}
+
 ${moveLine}`;
   } else {
     freeLead = `TODAY'S CALL: none yet — nothing looks good enough to call.\nWe'd rather say nothing than guess.`;
     proLead  = `TODAY'S TRADE: none open. Nothing currently meets our confidence bar.`;
   }
 
+  // NOTE: "" means an intentional blank line; null means "skip this line".
+  const lines = a => a.filter(x => x !== null && x !== undefined).join("\n");
+
   // ---------- free post ----------
-  const free = [
+  const free = lines([
 `📊 SharpCall — Today`,
 ``,
 freeLead,
 ``,
 `WHAT WE THINK ABOUT EVERYTHING ELSE`,
-upNames.length ? `Heading up ↑   ${upNames.join(", ")}` : "",
-dnNames.length ? `Heading down ↓ ${dnNames.join(", ")}` : "",
-outs.length    ? `Sitting out —  ${outs.slice(0,4).join(", ")} (we're not confident, so we say nothing)` : "",
+upNames.length ? `Heading up ↑   ${upNames.join(", ")}` : null,
+dnNames.length ? `Heading down ↓ ${dnNames.join(", ")}` : null,
+outs.length    ? `Sitting out —  ${outs.slice(0,4).join(", ")}` : null,
+outs.length    ? `(we're only confident on some — on the rest we say nothing)` : null,
 ``,
-recordLine,
-`We post every call before it happens, and every result after — including the ones we get wrong.`,
+recordLine || null,
+`Every call is posted before it happens, and every result after — including the ones we get wrong.`,
 ``,
 `Want the exact price to buy at, when to take profit, and when to cut losses?`,
 `👉 getsharpcall.com/members`,
 ``,
 `Not financial advice · 18+`
-  ].filter(x => x !== "").join("\n");
+  ]);
 
   // ---------- pro post ----------
-  const pro = [
+  const pro = lines([
 `💼 SharpCall PRO — Today`,
 ``,
 proLead,
 ``,
 `THE FULL BOARD`,
-upNames.length ? `Heading up ↑   ${ups.map(x => `${nice(x.a)} (${x.conf}% sure)`).join(", ")}` : "",
-dnNames.length ? `Heading down ↓ ${dns.map(x => `${nice(x.a)} (${x.conf}% sure)`).join(", ")}` : "",
-outs.length    ? `Sitting out —  ${outs.join(", ")}` : "",
+ups.length ? `Heading up ↑   ${ups.map(x => `${nice(x.a)} (${x.conf}% sure)`).join(", ")}` : null,
+dns.length ? `Heading down ↓ ${dns.map(x => `${nice(x.a)} (${x.conf}% sure)`).join(", ")}` : null,
+outs.length ? `Sitting out —  ${outs.join(", ")}` : null,
 ``,
-recordLine,
-(d.calls && Array.isArray(d.calls.open)) ? `We're also tracking ${d.calls.open.length} longer-term calls, all locked in and graded.` : "",
+recordLine || null,
+(d.calls && Array.isArray(d.calls.open)) ? `We're also tracking ${d.calls.open.length} longer-term calls, all locked in and graded.` : null,
 ``,
 `Not financial advice · 18+`
-  ].filter(x => x !== "").join("\n");
+  ]);
 
   return { free, pro };
 }
