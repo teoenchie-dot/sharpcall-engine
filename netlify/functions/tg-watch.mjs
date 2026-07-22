@@ -1,14 +1,21 @@
 // netlify/functions/tg-watch.mjs
-// Instant Telegram alerts — runs every 15 min.
-//  • Blasts the moment a NEW fast trade opens (time-sensitive, can't wait for the daily digest).
-//  • Blasts the RESULT when any trade closes (win or loss) — the honest-scoreboard play.
-// Silent unless TG_BOT_TOKEN is set. First run SEEDS state and sends nothing (no backlog spam).
+// Instant Telegram alerts (every 15 min), in plain English.
+//  • New fast trade opens -> blast immediately.
+//  • Any trade closes -> blast the result (win or loss).
+// Silent unless TG_BOT_TOKEN is set. First run seeds state and sends nothing.
 
 import { getStore } from "@netlify/blobs";
 
 const FREE_CHAT = "-1003926123805";
 const PRO_CHAT  = "-1004281002756";
 const TRADES = "https://gilded-cupcake-0b1708.netlify.app/.netlify/functions/trades";
+
+const NAMES = {
+  ETH:"Ethereum", BTC:"Bitcoin", AAPL:"Apple", MSFT:"Microsoft", NVDA:"Nvidia", TSLA:"Tesla",
+  DXY:"US Dollar", NASDAQ:"Nasdaq", SP500:"S&P 500", GOLD:"Gold", SILVER:"Silver",
+  COPPER:"Copper", OIL:"Crude Oil", NATGAS:"Natural Gas", VIX:"Market Fear Index"
+};
+const nice = k => NAMES[String(k||"").toUpperCase()] || k;
 
 async function send(token, chat, text){
   const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -19,41 +26,57 @@ async function send(token, chat, text){
   return r.json();
 }
 
+function recordLine(rec){
+  return (rec && rec.wins != null) ? `Our record: ${rec.wins} wins, ${rec.losses} losses.` : "";
+}
+
 function openMsgs(f, rec){
-  const nm = f.name || String(f.asset || "").toUpperCase();
-  const recLine = rec && rec.wins != null ? `\nRunning record: ${rec.wins}W-${rec.losses}L` : "";
+  const nm = f.name || nice(f.asset);
+  const word = f.dir === "UP" ? "UP" : "DOWN";
+  const rl = recordLine(rec);
+
   const free =
-`⚡ FAST CALL JUST FIRED
+`⚡ NEW CALL — just now
 
-${nm} — ${f.dir}, ${f.conf}% confidence
-Entry ${f.entry}${f.horizon ? ` · horizon ${f.horizon}` : ""}
+${nm} — we think it's going ${word}
+How sure are we? ${f.conf}% confident
+Price right now: ${f.entry}
 
-Exact target & stop are in Pro.${recLine}
+The exact take-profit and cut-loss prices are in Pro.
+👉 getsharpcall.com/members
 
-🔓 getsharpcall.com/members
+${rl}
 Not financial advice · 18+`;
 
   const pro =
-`⚡ FAST CALL — ${nm}${f.id ? ` (${f.id})` : ""} · ${f.dir} · ${f.conf}%
+`⚡ NEW TRADE — ${nm}, going ${word}
+How sure are we? ${f.conf}% confident
 
-Entry ${f.entry}
-🎯 Target ${f.target}${f.targetPct != null ? ` (${f.targetPct >= 0 ? "+" : ""}${f.targetPct}%)` : ""}
-🛑 Stop ${f.stop}${f.stopPct != null ? ` (${f.stopPct}%)` : ""}${f.rr ? `\nR:R ${f.rr}` : ""}${f.horizon ? ` · horizon ${f.horizon}` : ""}${recLine}
+Buy in around:      ${f.entry}
+Take profit at:     ${f.target}${f.targetPct != null ? `  (${f.targetPct >= 0 ? "+" : ""}${f.targetPct}%)` : ""}
+Cut losses at:      ${f.stop}${f.stopPct != null ? `  (${f.stopPct}%)` : ""}
+How long we hold:   ${f.horizon || "short term"}
 
+${rl}
 Not financial advice · 18+`;
+
   return { free, pro };
 }
 
 function closeMsg(h, rec){
-  const nm = h.name || String(h.asset || "").toUpperCase();
+  const nm = h.name || nice(h.asset);
   const win = h.result === "WIN";
-  const rLine = h.r != null ? ` (${h.r >= 0 ? "+" : ""}${h.r}R)` : (win ? " (+1.6R)" : " (-1.0R)");
-  const recLine = rec && rec.wins != null ? `\nRunning record: ${rec.wins}W-${rec.losses}L` : "";
-  return `${win ? "✅" : "❌"} RESULT — ${nm}${h.id ? ` (${h.id})` : ""} · ${h.type || ""} · ${h.dir || ""}
+  const word = h.dir === "UP" ? "up" : "down";
+  const what = win
+    ? `We said it would go ${word}, and it reached our take-profit price.`
+    : `We said it would go ${word}. It hit our cut-loss price instead.`;
 
-${h.result}${rLine}${recLine}
+  return `${win ? "✅" : "❌"} RESULT — ${nm}: ${win ? "WE WERE RIGHT" : "WE WERE WRONG"}
 
-Every call graded in public — wins and misses.
+${what}
+
+${recordLine(rec)}
+We post every result — the wins and the misses.
 Not financial advice · 18+`;
 }
 
@@ -69,7 +92,6 @@ export default async () => {
     if (h && h.id && (h.result === "WIN" || h.result === "LOSS")) closeIds.push(h.id);
   });
 
-  // FIRST RUN: seed everything as already-seen, send nothing.
   if (!prior) {
     await store.setJSON("alerts", { opened: openIds, closed: closeIds, seeded: new Date().toISOString() });
     console.log("Seeded alert state — no messages sent.");
@@ -94,7 +116,7 @@ export default async () => {
 
   const token = process.env.TG_BOT_TOKEN;
   if (!token) {
-    console.log(`${events.length} alert(s) pending but TG_BOT_TOKEN not set — marking seen, nothing sent.`);
+    console.log(`${events.length} alert(s) pending but no token — marking seen, nothing sent.`);
     await store.setJSON("alerts", state);
     return;
   }
@@ -104,17 +126,14 @@ export default async () => {
       const m = openMsgs(e.data, t.record);
       await send(token, FREE_CHAT, m.free);
       await send(token, PRO_CHAT,  m.pro);
-      console.log("Sent FAST OPEN alert:", e.data.id);
     } else {
       const m = closeMsg(e.data, t.record);
       await send(token, FREE_CHAT, m);
       await send(token, PRO_CHAT,  m);
-      console.log("Sent RESULT alert:", e.data.id, e.data.result);
     }
   }
 
   await store.setJSON("alerts", state);
 };
 
-// Every 15 minutes — fast trades are short-horizon, so they can't wait for the daily digest.
 export const config = { schedule: "*/15 * * * *" };
